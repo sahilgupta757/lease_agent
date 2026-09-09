@@ -1,0 +1,10 @@
+GLOSSARY — Rent Escalation Clauses
+An escalation clause specifies how base rent increases over the lease term, most commonly a
+fixed compounded percentage applied on each anniversary of the commencement date. Vague
+language such as "market standard," "to be adjusted periodically," or "in line with prevailing
+rates" is not enforceable as a numeric obligation and should be flagged for negotiation before
+lease execution — it is not something an extraction or scoring step should silently resolve to
+a specific figure on the tenant's or landlord's behalf.
+Typical ranges by region (informational only, not a substitute for a stated clause):
+US Class-A suburban office: 2.5% - 3.5% annually.
+India commercial / IT park space: 4% - 6% annually.

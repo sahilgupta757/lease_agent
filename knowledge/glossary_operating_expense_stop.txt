@@ -1,0 +1,7 @@
+GLOSSARY — Operating Expense Stop / Base Year
+A "base year stop" caps the landlord's absorption of operating expenses (CAM, taxes, insurance)
+at the level incurred in a defined base year; the tenant pays its pro-rata share of any increase
+above that base year amount in subsequent years. This is distinct from base rent and from rent
+escalation — a lease can have a flat base rent escalation and a separate, independently rising
+operating expense pass-through. Typical US Class-A office operating expense stops run
+$6.00-$7.50 per rentable square foot annually as of the current leasing cycle.

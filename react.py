@@ -4,18 +4,27 @@ import re
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from src.llm import get_llm
-from src.tools import annualize_rent, flag_missing_fields, parse_date, parse_money
+from src.tools import annualize_rent, flag_missing_fields, lookup_market_context, parse_date, parse_money
 
-TOOLS = [parse_money, parse_date, annualize_rent]
+TOOLS = [parse_money, parse_date, annualize_rent, lookup_market_context]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
 SYSTEM_PROMPT = """You are a lease-data assistant helping fill in fields that a first-pass \
 extraction could not find in a commercial lease document.
 
-You have tools: parse_money(text), parse_date(text), annualize_rent(monthly).
-These tools do simple pattern matching, not full-document reasoning, so when you call one \
-pass a SHORT, relevant excerpt of the lease text (the sentence containing the value) rather \
-than the entire document.
+You have tools: parse_money(text), parse_date(text), annualize_rent(monthly), and \
+lookup_market_context(query) which searches a knowledge base of comparable deals and \
+glossary entries.
+
+parse_money/parse_date do simple pattern matching, not full-document reasoning, so when you \
+call one pass a SHORT, relevant excerpt of the lease text (the sentence containing the value) \
+rather than the entire document.
+
+lookup_market_context is for INFORMATION, not for filling a field: if a field is genuinely \
+missing or only described vaguely (e.g. "market standard"), you may call it to learn what \
+comparable deals typically look like, but the field itself must stay null unless the lease \
+text itself states a number. Note any useful market context you find so it can inform \
+downstream confidence scoring and reviewer questions — do not report it as the field's value.
 
 Work through the missing fields one at a time. If a tool cannot find a value and you are \
 confident of the value yourself from reading the lease text, you may use your own reading \

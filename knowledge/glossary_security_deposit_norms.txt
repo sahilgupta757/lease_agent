@@ -1,0 +1,7 @@
+GLOSSARY — Security Deposit Norms
+Commercial security deposits are typically expressed either as a flat figure or as a multiple of
+monthly rent. US Class-A office deals commonly run 1-3 months' rent for creditworthy tenants.
+Indian commercial/IT park deals commonly run higher, often 6-10 months' rent, reflecting market
+convention rather than tenant credit risk. A deposit stated only as "six months rent" without a
+restated figure should be cross-checked against the monthly rent figure once that is confirmed,
+not treated as independently verified.

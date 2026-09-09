@@ -13,6 +13,7 @@ def run(lease_path: str) -> dict:
     lease_text = Path(lease_path).read_text()
     initial_state = {
         "lease_text": lease_text,
+        "retrieved_context": [],
         "extracted": {},
         "tool_trace": [],
         "confidence": 0.0,

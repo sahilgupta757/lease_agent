@@ -3,6 +3,8 @@ import re
 from dateutil import parser as dateparse
 from langchain_core.tools import tool
 
+from src.rag import search_market_context
+
 _ONES = {
     "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
     "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
@@ -86,6 +88,20 @@ def parse_date(text: str) -> str | None:
 def annualize_rent(monthly: float) -> float:
     """Convert a monthly rent figure into an annualized figure (monthly * 12)."""
     return monthly * 12
+
+
+@tool
+def lookup_market_context(query: str) -> list[str]:
+    """Search a small knowledge base of comparable lease deals and glossary
+    entries for context on ambiguous or market-referenced lease language
+    (e.g. "market standard escalation", "base year stop", "six months rent").
+
+    Use this to INFORM a confidence assessment or a reviewer note with what
+    comparable deals or industry norms typically look like. Do NOT use its
+    results to fill in or overwrite a field the lease itself never states a
+    number for — a comparable deal is context, not a fact about this lease.
+    """
+    return search_market_context(query)
 
 
 def flag_missing_fields(extracted: dict) -> list[str]:

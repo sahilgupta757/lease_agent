@@ -2,11 +2,12 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from src.nodes import auto_commit, extract_terms, human_review, score, validate, write_audit
+from src.nodes import auto_commit, extract_terms, human_review, retrieve_context, score, validate, write_audit
 
 
 class LeaseState(TypedDict):
     lease_text: str
+    retrieved_context: list       # comparable-deal / glossary snippets from the knowledge base
     extracted: dict
     tool_trace: list
     confidence: float
@@ -20,6 +21,7 @@ def route_decision(state: LeaseState) -> str:
 
 
 graph_builder = StateGraph(LeaseState)
+graph_builder.add_node("retrieve_context", retrieve_context)
 graph_builder.add_node("extract_terms", extract_terms)
 graph_builder.add_node("validate", validate)
 graph_builder.add_node("score", score)
@@ -27,7 +29,8 @@ graph_builder.add_node("auto_commit", auto_commit)
 graph_builder.add_node("human_review", human_review)
 graph_builder.add_node("write_audit", write_audit)
 
-graph_builder.add_edge(START, "extract_terms")
+graph_builder.add_edge(START, "retrieve_context")
+graph_builder.add_edge("retrieve_context", "extract_terms")
 graph_builder.add_edge("extract_terms", "validate")
 graph_builder.add_edge("validate", "score")
 

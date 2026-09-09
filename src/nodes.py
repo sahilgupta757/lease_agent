@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from react import run_react
 from src.llm import get_llm
+from src.rag import search_market_context
 
 
 class LeaseTerms(BaseModel):
@@ -31,11 +32,24 @@ class ReviewSummary(BaseModel):
     questions_for_reviewer: list[str] = Field(..., description="Specific questions the reviewer needs to resolve before approval")
 
 
+def retrieve_context(state: dict) -> dict:
+    """No LLM call: embeds the raw lease text and pulls the top-k most similar
+    comparable-deal / glossary snippets from the local knowledge base. This is
+    naive/always-on RAG — retrieval happens unconditionally, before any
+    reasoning about what's actually missing."""
+    snippets = search_market_context(state["lease_text"], k=3)
+    return {"retrieved_context": snippets}
+
+
 def extract_terms(state: dict) -> dict:
     llm = get_llm().with_structured_output(LeaseTerms)
+    context_block = "\n\n".join(state.get("retrieved_context", []))
     result: LeaseTerms = llm.invoke(
         "Extract the lease terms below from this commercial lease document. "
-        "If a field is not stated or is ambiguous, leave it null rather than guessing.\n\n"
+        "If a field is not stated or is ambiguous, leave it null rather than guessing — "
+        "the reference market data below is background only, never a substitute for what "
+        "the lease itself does or doesn't say.\n\n"
+        f"Reference market data (context only):\n{context_block}\n\n"
         f"Lease text:\n{state['lease_text']}"
     )
     return {"extracted": result.model_dump(), "tool_trace": []}
@@ -48,10 +62,14 @@ def validate(state: dict) -> dict:
 
 def score(state: dict) -> dict:
     llm = get_llm().with_structured_output(ConfidenceAssessment)
+    context_block = "\n\n".join(state.get("retrieved_context", []))
     result: ConfidenceAssessment = llm.invoke(
         "Assess how confident we should be in this lease data extraction, on a 0-1 scale.\n"
         "Lower the score for missing fields, contradictory statements (e.g. two different "
-        "rent figures), or language that hedges on a value (e.g. 'roughly', 'TBD', 'market standard').\n\n"
+        "rent figures), or language that hedges on a value (e.g. 'roughly', 'TBD', 'market standard'). "
+        "If the reference market data below suggests a hedged term (like 'market standard') sits "
+        "well outside comparable norms, or confirms it's plausible, say so in a risk note.\n\n"
+        f"Reference market data (context only): {context_block}\n\n"
         f"Extracted data: {state['extracted']}\n"
         f"Fields still flagged missing: {state['flags']}\n\n"
         f"Original lease text:\n{state['lease_text']}"
@@ -68,10 +86,14 @@ def auto_commit(state: dict) -> dict:
 
 def human_review(state: dict) -> dict:
     llm = get_llm().with_structured_output(ReviewSummary)
+    context_block = "\n\n".join(state.get("retrieved_context", []))
     result: ReviewSummary = llm.invoke(
         "This lease extraction fell below the auto-approval confidence threshold and needs "
         "human review. Write a short summary and the specific questions a reviewer must "
-        "resolve before this lease record can be approved.\n\n"
+        "resolve before this lease record can be approved. Where the reference market data "
+        "below is relevant to a flagged question (e.g. a plausible number for a vague "
+        "escalation clause), mention it as context for the reviewer, not as a resolved fact.\n\n"
+        f"Reference market data (context only): {context_block}\n\n"
         f"Extracted data: {state['extracted']}\n"
         f"Flags: {state['flags']}\n\n"
         f"Original lease text:\n{state['lease_text']}"
