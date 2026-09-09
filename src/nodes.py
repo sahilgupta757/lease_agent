@@ -1,0 +1,103 @@
+import json
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+from pydantic import BaseModel, Field
+
+from react import run_react
+from src.llm import get_llm
+
+
+class LeaseTerms(BaseModel):
+    tenant: str | None = Field(None, description="Legal name of the tenant entity")
+    monthly_rent: float | None = Field(None, description="Base monthly rent as a plain number, e.g. 12500.0")
+    term_months: int | None = Field(None, description="Total lease term length in months")
+    commencement: str | None = Field(None, description="Commencement date in YYYY-MM-DD form, if stated or determinable")
+    escalation_pct: float | None = Field(None, description="Annual rent escalation percentage, e.g. 3.0 for 3%")
+
+
+class ConfidenceAssessment(BaseModel):
+    confidence: float = Field(..., ge=0, le=1, description="Overall confidence that extracted data is complete and correct")
+    reasoning: str = Field(..., description="One or two sentences on what drove the score")
+    risk_notes: list[str] = Field(
+        default_factory=list,
+        description="Short notes on ambiguous or unresolved language a human reviewer should know about, even for fields that have a value",
+    )
+
+
+class ReviewSummary(BaseModel):
+    summary: str = Field(..., description="Plain-language summary of the lease for a human reviewer")
+    questions_for_reviewer: list[str] = Field(..., description="Specific questions the reviewer needs to resolve before approval")
+
+
+def extract_terms(state: dict) -> dict:
+    llm = get_llm().with_structured_output(LeaseTerms)
+    result: LeaseTerms = llm.invoke(
+        "Extract the lease terms below from this commercial lease document. "
+        "If a field is not stated or is ambiguous, leave it null rather than guessing.\n\n"
+        f"Lease text:\n{state['lease_text']}"
+    )
+    return {"extracted": result.model_dump(), "tool_trace": []}
+
+
+def validate(state: dict) -> dict:
+    extracted, trace, flags = run_react(dict(state["extracted"]), state["lease_text"])
+    return {"extracted": extracted, "tool_trace": state["tool_trace"] + trace, "flags": flags}
+
+
+def score(state: dict) -> dict:
+    llm = get_llm().with_structured_output(ConfidenceAssessment)
+    result: ConfidenceAssessment = llm.invoke(
+        "Assess how confident we should be in this lease data extraction, on a 0-1 scale.\n"
+        "Lower the score for missing fields, contradictory statements (e.g. two different "
+        "rent figures), or language that hedges on a value (e.g. 'roughly', 'TBD', 'market standard').\n\n"
+        f"Extracted data: {state['extracted']}\n"
+        f"Fields still flagged missing: {state['flags']}\n\n"
+        f"Original lease text:\n{state['lease_text']}"
+    )
+    flags = list(state["flags"])
+    for note in result.risk_notes:
+        flags.append(f"risk: {note}")
+    return {"confidence": result.confidence, "flags": flags}
+
+
+def auto_commit(state: dict) -> dict:
+    return {"decision": "auto_approved"}
+
+
+def human_review(state: dict) -> dict:
+    llm = get_llm().with_structured_output(ReviewSummary)
+    result: ReviewSummary = llm.invoke(
+        "This lease extraction fell below the auto-approval confidence threshold and needs "
+        "human review. Write a short summary and the specific questions a reviewer must "
+        "resolve before this lease record can be approved.\n\n"
+        f"Extracted data: {state['extracted']}\n"
+        f"Flags: {state['flags']}\n\n"
+        f"Original lease text:\n{state['lease_text']}"
+    )
+    trace_entry = {
+        "tool": "human_review_summary",
+        "input": {"flags": state["flags"]},
+        "output": {"summary": result.summary, "questions": result.questions_for_reviewer},
+    }
+    return {"decision": "flagged_for_review", "tool_trace": state["tool_trace"] + [trace_entry]}
+
+
+def write_audit(state: dict) -> dict:
+    audit_id = str(uuid.uuid4())
+    record = {
+        "audit_id": audit_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "decision": state["decision"],
+        "confidence": state["confidence"],
+        "extracted": state["extracted"],
+        "flags": state["flags"],
+        "tool_trace": state["tool_trace"],
+    }
+
+    audit_dir = Path("audit")
+    audit_dir.mkdir(exist_ok=True)
+    (audit_dir / f"{audit_id}.json").write_text(json.dumps(record, indent=2))
+
+    return {"audit_id": audit_id}
